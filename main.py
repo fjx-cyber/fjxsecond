@@ -1,10 +1,15 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from PIL import Image, ImageDraw
 import requests
 from io import BytesIO
 
 app = FastAPI()
+
+# 允许访问生成的图片
+app.mount("/static", StaticFiles(directory="."), name="static")
+
 
 class Box(BaseModel):
     x: int
@@ -13,9 +18,11 @@ class Box(BaseModel):
     h: int
     comment: str
 
+
 class RequestData(BaseModel):
     image_url: str
     boxes: list[Box]
+
 
 @app.post("/annotate")
 def annotate(data: RequestData):
@@ -28,13 +35,13 @@ def annotate(data: RequestData):
         x, y, w, h = box.x, box.y, box.w, box.h
 
         draw.ellipse(
-            (x, y, x+w, y+h),
+            (x, y, x + w, y + h),
             outline="red",
             width=4
         )
 
         draw.text(
-            (x, y-25),
+            (x, y - 25),
             box.comment,
             fill="red"
         )
@@ -42,4 +49,7 @@ def annotate(data: RequestData):
     output = "graded.png"
     img.save(output)
 
-    return {"result": output}
+    # 返回图片链接（不是文件名）
+    return {
+        "image": "https://web-production-bcf26.up.railway.app/static/graded.png"
+    }
