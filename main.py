@@ -2,19 +2,21 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from PIL import Image, ImageDraw
-import requests
 from io import BytesIO
+import requests
 import os
+import time
 
 app = FastAPI()
 
-# 创建 static 文件夹（如果不存在）
+# 创建 static 文件夹
 os.makedirs("static", exist_ok=True)
 
-# 挂载静态文件目录
+# 挂载静态文件
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+# 框的数据结构
 class Box(BaseModel):
     x: int
     y: int
@@ -23,6 +25,7 @@ class Box(BaseModel):
     comment: str
 
 
+# 请求数据结构
 class RequestData(BaseModel):
     image_url: str
     boxes: list[Box]
@@ -30,38 +33,50 @@ class RequestData(BaseModel):
 
 @app.get("/")
 def root():
-    return {"status": "running"}
+    return {"message": "API is running"}
 
 
 @app.post("/annotate")
 def annotate(data: RequestData):
-    # 下载图片
-    response = requests.get(data.image_url)
-    img = Image.open(BytesIO(response.content))
+    try:
+        # 下载图片
+        response = requests.get(data.image_url)
+        response.raise_for_status()
 
-    draw = ImageDraw.Draw(img)
+        # 打开图片
+        img = Image.open(BytesIO(response.content)).convert("RGB")
 
-    # 画圈 + 标注
-    for box in data.boxes:
-        x, y, w, h = box.x, box.y, box.w, box.h
+        draw = ImageDraw.Draw(img)
 
-        draw.ellipse(
-            (x, y, x + w, y + h),
-            outline="red",
-            width=5
-        )
+        # 画圈 + 标注
+        for box in data.boxes:
+            x, y, w, h = box.x, box.y, box.w, box.h
 
-        draw.text(
-            (x, y - 25),
-            box.comment,
-            fill="red"
-        )
+            # 红圈
+            draw.ellipse(
+                [(x, y), (x + w, y + h)],
+                outline="red",
+                width=5
+            )
 
-    # 保存到 static
-    output = "static/graded.png"
-    img.save(output)
+            # 标注文字
+            draw.text(
+                (x, y - 30),
+                box.comment,
+                fill="red"
+            )
 
-    # 返回图片链接
-    return {
-        "image": "https://web-production-bcf26.up.railway.app/static/graded.png"
-    }
+        # 防缓存：每次生成唯一文件名
+        filename = f"graded_{int(time.time())}.png"
+        filepath = f"static/{filename}"
+
+        img.save(filepath)
+
+        return {
+            "image": f"https://web-production-bcf26.up.railway.app/static/{filename}"
+        }
+
+    except Exception as e:
+        return {
+            "error": str(e)
+        }
